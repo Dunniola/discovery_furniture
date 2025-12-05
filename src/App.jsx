@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { UserAuthProvider, useUserAuth } from "./context/UserAuthContext";
 import Sidebar from "./components/Sidebar";
-import ColourSleuth from "./components/ColourSleuth";
+// import ColourSleuth from "./components/ColourSleuth";
 import PriceComparison from "./components/PriceComparison";
 import MoodBoard from "./components/MoodBoard";
 import MoodBoardDiscover from "./components/MoodBoardDiscover";
@@ -25,8 +25,8 @@ const DashboardLayout = () => {
     switch (active) {
       case "Discover":
         return <MoodBoardDiscover />;
-      case "Colour Sleuth":
-        return <ColourSleuth />;
+      // case "Colour Sleuth":
+      //   return <ColourSleuth />;
       case "Price Comparison":
         return <PriceComparison />;
       case "Mood Board":
@@ -37,7 +37,7 @@ const DashboardLayout = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-blue-200">
       <Sidebar activeCategory={active} onCategorySelect={setActive} />
       <main className="flex-1 p-8 overflow-auto md:mr-60">{renderContent()}</main>
     </div>

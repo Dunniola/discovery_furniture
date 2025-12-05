@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { FaTrash } from "react-icons/fa";
 
 const MoodBoard = ({ userId }) => {
   const colors = {
@@ -12,23 +13,35 @@ const MoodBoard = ({ userId }) => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  // Automatically switch to live API in production
   const BASE_URL =
     import.meta.env.VITE_API_BASE_URL ||
     (window.location.hostname === "localhost"
       ? "http://127.0.0.1:8000"
       : "https://admin.damxstudio.com");
 
+  // Load guest items from localStorage
   const loadGuestItems = () => {
     try {
       const raw = localStorage.getItem("guest_moodboard");
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      const items = JSON.parse(raw);
+      return items.map((i) => ({
+        id: i.id || `guest-${Date.now()}`,
+        image_url: i.image || i.image_url,
+        title: i.title || "Untitled",
+        type: i.type || "",
+        material: i.material || "",
+        price: i.price || 0,
+        website_url: i.website_url || "#",
+        guest: true,
+      }));
     } catch (err) {
       console.error("Failed to read guest_moodboard:", err);
       return [];
     }
   };
 
+  // Fetch saved images (server + guest)
   const fetchSavedImages = async () => {
     setLoading(true);
     setMessage("");
@@ -36,13 +49,21 @@ const MoodBoard = ({ userId }) => {
     if (userId) {
       try {
         const res = await fetch(`${BASE_URL}/api/moodboard/${userId}`);
-        if (!res.ok) throw new Error("Network response was not ok");
+        if (!res.ok) throw new Error("Failed to fetch server items");
         const data = await res.json();
 
-        const serverItems = data.savedImages || [];
-        const guestItems = loadGuestItems();
+        const serverItems = (data.savedImages || []).map((i) => ({
+          id: i.id,
+          image_url: i.image_url || i.image,
+          title: i.title || "Untitled",
+          type: i.type || "",
+          material: i.material || "",
+          price: i.price || 0,
+          website_url: i.website_url || "#",
+          guest: false,
+        }));
 
-        // Merge unique items
+        const guestItems = loadGuestItems();
         const urls = new Set(serverItems.map((i) => i.image_url));
         const merged = [
           ...serverItems,
@@ -55,12 +76,14 @@ const MoodBoard = ({ userId }) => {
       } catch (err) {
         console.error(err);
         setMessage("Failed to load your moodboard from server.");
+        setSavedImages(loadGuestItems());
       } finally {
         setLoading(false);
       }
       return;
     }
 
+    // Guest-only
     const guestItems = loadGuestItems();
     if (guestItems.length === 0) {
       setMessage(
@@ -71,6 +94,27 @@ const MoodBoard = ({ userId }) => {
     setLoading(false);
   };
 
+  // Delete an item
+  const deleteItem = (img) => {
+    if (img.guest) {
+      // Guest: remove from localStorage
+      const existing = loadGuestItems().filter((i) => i.id !== img.id);
+      localStorage.setItem("guest_moodboard", JSON.stringify(existing));
+    } else {
+      // Server: call API to delete
+      if (userId) {
+        fetch(`${BASE_URL}/api/moodboard/${img.id}`, { method: "DELETE" })
+          .then((res) => {
+            if (!res.ok) throw new Error("Failed to delete server item");
+          })
+          .catch((err) => console.error(err));
+      }
+    }
+    // Update state
+    setSavedImages((prev) => prev.filter((i) => i.id !== img.id));
+  };
+
+  // Fetch user activities
   const fetchUserActivities = async () => {
     if (!userId) return;
     try {
@@ -89,51 +133,53 @@ const MoodBoard = ({ userId }) => {
   }, [userId]);
 
   return (
-    <div className="md:p-6 bg-gray-50 min-h-screen">
-      <h2
-        className="text-2xl font-bold mb-4 max-md:mt-10"
+    <div className="min-h-screen w-full bg-blue-200 p-6 md:mt-16">
+      {/* <h2
+        className="text-2xl font-bold mb-4 text-center"
         style={{ color: colors.primary }}
       >
         My MoodBoard
-      </h2>
+      </h2> */}
 
-      {loading && (
-        <p style={{ color: colors.secondary }} className="mb-4">
-          Loading your saved moodboard...
-        </p>
-      )}
-      {!loading && message && (
-        <p style={{ color: colors.primary }} className="mb-4">
-          {message}
-        </p>
-      )}
+      {loading && <p style={{ color: colors.secondary }}>Loading your saved moodboard...</p>}
+      {!loading && message && <p style={{ color: colors.primary }}>{message}</p>}
 
       {!loading && savedImages.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-4">
           {savedImages.map((img, idx) => (
             <div
-              key={img.id || img.image_url || idx}
-              className="border bg-white p-2 rounded shadow hover:shadow-lg transition"
+              key={img.id || idx}
+              className="border bg-white rounded shadow hover:shadow-lg transition relative overflow-hidden"
               style={{ borderColor: colors.secondary }}
             >
               <img
                 src={img.image_url}
-                alt={img.keyword || "Saved item"}
-                className="w-full h-48 object-cover rounded"
+                alt={img.title || "Saved item"}
+                className="w-full  object-cover"
               />
-              <p
-                className="mt-2 font-semibold"
-                style={{ color: colors.primary }}
+              <div className="p-2 flex flex-col gap-1">
+                <p className="font-semibold text-lg" style={{ color: colors.primary }}>
+                  {img.title}
+                </p>
+                {img.price ? (
+                  <p className="text-sm" style={{ color: colors.secondary }}>
+                    Price: ${Number(img.price).toLocaleString()}
+                  </p>
+                ) : null}
+                {img.type || img.material ? (
+                  <p className="text-xs text-gray-600">
+                    {img.type && `Type: ${img.type}`}{" "}
+                    {img.material && `| Material: ${img.material}`}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                onClick={() => deleteItem(img)}
+                className="absolute top-2 right-2 p-2 rounded-full bg-red-600 text-white hover:scale-110 transition"
+                title="Delete"
               >
-                {img.title}
-              </p>
-              {/* <p className="text-sm text-gray-600">{img.description}</p> */}
-              {/* <p
-                className="text-xs italic"
-                style={{ color: colors.secondary }}
-              >
-                {img.material} – {img.type}
-              </p> */}
+                <FaTrash />
+              </button>
             </div>
           ))}
         </div>
@@ -141,17 +187,13 @@ const MoodBoard = ({ userId }) => {
 
       {userId && activities.length > 0 && (
         <div className="mt-8">
-          <h3
-            className="text-xl font-bold mb-2"
-            style={{ color: colors.primary }}
-          >
+          <h3 className="text-xl font-bold mb-2" style={{ color: colors.primary }}>
             Recent Activities
           </h3>
           <ul className="list-disc pl-5 space-y-1">
             {activities.map((act, idx) => (
               <li key={act.id || idx} style={{ color: colors.secondary }}>
-                {act.action}{" "}
-                {act.details ? `(${JSON.stringify(act.details)})` : ""}
+                {act.action} {act.details ? `(${JSON.stringify(act.details)})` : ""}
               </li>
             ))}
           </ul>

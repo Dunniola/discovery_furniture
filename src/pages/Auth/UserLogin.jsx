@@ -36,7 +36,7 @@ const UserLogin = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#030616] relative px-4 sm:px-6 md:px-8">
+    <div className="flex items-center justify-center min-h-screen bg-blue-200 relative px-4 sm:px-6 md:px-8">
       {/* Logo */}
       <a
         href="https://damxstudio.com"

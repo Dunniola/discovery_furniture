@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { FaTrash } from "react-icons/fa";
+
 
 const MoodBoardDiscover = ({ userId }) => {
   const [material, setMaterial] = useState("");
@@ -8,12 +10,7 @@ const MoodBoardDiscover = ({ userId }) => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [activities, setActivities] = useState([]);
-  const [activityLoading, setActivityLoading] = useState(false);
 
-  const IMAGES_PER_PAGE = 6;
   const BASE_URL = "https://api.damxstudio.com/api";
 
   const colors = {
@@ -22,101 +19,71 @@ const MoodBoardDiscover = ({ userId }) => {
     accent: "#fcff53",
   };
 
-  // Fetch images from server
-  const fetchImages = async (filterMaterial = "", filterType = "", pageNumber = 1) => {
+  // Fetch images from API
+  const fetchImages = async (filters = {}) => {
     setLoading(true);
     setError("");
     try {
       const queryParams = new URLSearchParams({
-        ...(filterMaterial && { material: filterMaterial }),
-        ...(filterType && { type: filterType }),
-        limit: IMAGES_PER_PAGE,
-        page: pageNumber,
+        ...filters,
+        latest: true,
       }).toString();
 
       const res = await fetch(`${BASE_URL}/moodboard-discover?${queryParams}`);
-      if (!res.ok) throw new Error("Network response was not ok");
+      if (!res.ok) throw new Error("Failed to fetch images");
 
       const data = await res.json();
       const imagesData = data.images || [];
-      const totalRecords = data.total || imagesData.length;
 
       if (imagesData.length === 0) {
         setImages([
           {
             tempId: "no-image",
-            image_url: "https://via.placeholder.com/300x200?text=No+Image",
+            image: "https://via.placeholder.com/300x200?text=No+Image",
             title: "No Image Found",
-            description: "No image matches your selection",
-            keyword: filterMaterial || filterType ? `${filterMaterial} ${filterType}` : "All",
-            tags: [filterMaterial, filterType],
+            type: "",
+            material: "",
+            website_url: "#",
           },
         ]);
-        setTotalPages(1);
       } else {
-        setImages(imagesData.map((img, idx) => ({ ...img, tempId: img.id || `discover-${idx}` })));
-        setTotalPages(Math.ceil(totalRecords / IMAGES_PER_PAGE));
+        setImages(
+          imagesData.map((img, idx) => ({
+            ...img,
+            tempId: img.id || `discover-${idx}`,
+          }))
+        );
       }
     } catch (err) {
       console.error("❌ Fetch error:", err);
-      setError("Failed to fetch images. Please check your server connection.");
+      setError("Failed to fetch images from server");
       setImages([]);
-      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch user activities
-  const fetchActivities = async () => {
-    if (!userId) return;
-    setActivityLoading(true);
-    try {
-      const res = await fetch(`${BASE_URL}/user-activity?user_id=${userId}`);
-      if (!res.ok) throw new Error("Network response was not ok");
-      const data = await res.json();
-      setActivities(data.data || []);
-    } catch (err) {
-      console.error("❌ Activity fetch error:", err);
-      toast.error("Failed to fetch user activity.");
-    } finally {
-      setActivityLoading(false);
-    }
-  };
-
+  // Fetch latest images on load
   useEffect(() => {
-    fetchImages("", "", 1);
-    fetchActivities();
+    fetchImages();
   }, []);
 
-  const handleFilter = () => {
-    setPage(1);
-    fetchImages(material, type, 1);
-  };
-
-  const handleNext = () => {
-    if (page < totalPages) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      fetchImages(material, type, nextPage);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (page > 1) {
-      const prevPage = page - 1;
-      setPage(prevPage);
-      fetchImages(material, type, prevPage);
-    }
-  };
-
-  // Save image to MoodBoard
+  // Save image to MoodBoard (backend or guest localStorage)
   const saveToMoodBoard = async (img) => {
     if (img.tempId === "no-image") {
       toast.error("Cannot save placeholder image");
       return;
     }
 
+    const imageToSave =
+      img.image_url || img.low_res_image_url || img.image || null;
+
+    if (!imageToSave) {
+      toast.error("Image URL missing");
+      return;
+    }
+
+    // Logged-in user → Save to backend
     if (userId) {
       try {
         const res = await fetch(`${BASE_URL}/moodboard`, {
@@ -124,15 +91,16 @@ const MoodBoardDiscover = ({ userId }) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: userId,
-            image_url: img.image_url,
+            image: imageToSave,
             title: img.title,
-            description: img.description,
-            keyword: img.keyword,
-            material,
-            type,
+            type: img.type,
+            material: img.material,
+            website_url: img.website_url,
           }),
         });
+
         if (!res.ok) throw new Error("Failed to save image");
+
         toast.success("Image added successfully!");
       } catch (err) {
         console.error("❌ Save error:", err);
@@ -141,177 +109,174 @@ const MoodBoardDiscover = ({ userId }) => {
       return;
     }
 
-    // Guest user: Save to localStorage
+    // Guest → Save locally
     try {
       const key = "guest_moodboard";
       const existing = JSON.parse(localStorage.getItem(key) || "[]");
+
       const guestItem = {
         id: `guest-${Date.now()}`,
-        image_url: img.image_url,
+        image: imageToSave,
         title: img.title,
-        description: img.description,
-        keyword: img.keyword,
-        material,
-        type,
+        type: img.type,
+        material: img.material,
+        website_url: img.website_url,
         created_at: new Date().toISOString(),
       };
+
       localStorage.setItem(key, JSON.stringify([guestItem, ...existing]));
-      toast.success("Image saved successfully in moodboard");
+      toast.success("Image saved to your MoodBoard");
     } catch (err) {
       console.error("❌ Local save error:", err);
       toast.error("Failed to save locally.");
     }
   };
 
-  return (
-    <div className="grid  min-h-screen bg-gray-50">
-      <div className="py-14 ">
-        <h2 className="text-2xl font-bold mb-6 text-center" style={{ color: colors.primary }}>
-          Discover 
-        </h2>
+  // Ask before clearing guest MoodBoard
+  const confirmClearMoodBoard = () => {
+    toast.info(
+      <div className="flex flex-col gap-2">
+        <p>Are you sure you want to delete all activities?</p>
+        <div className="flex justify-between mt-2">
+          <button
+            onClick={() => {
+              localStorage.removeItem("guest_moodboard");
+              setImages([]);
+              toast.dismiss();
+              toast.success("MoodBoard activities deleted!");
+            }}
+            className="px-3 py-1 bg-red-600 text-white rounded font-semibold"
+          >
+            Yes
+          </button>
+          <button
+            onClick={() => toast.dismiss()}
+            className="px-3 py-1 bg-gray-400 text-white rounded font-semibold"
+          >
+            No
+          </button>
+        </div>
+      </div>,
+      { autoClose: false }
+    );
+  };
 
-        {/* Filters */}
-       
-        {/* Images Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-10">
+  return (
+    <div className={`m-0 py-14 bg-blue-200 md:mt-16`}>
+      {/* <h2
+        className="text-2xl font-bold mb-6 text-center"
+        style={{ color: colors.primary }}
+      >
+        Discover MoodBoard
+      </h2> */}
+
+      {/* Images Grid */}
+      {loading ? (
+        <p className="text-center text-primary">Loading...</p>
+      ) : error ? (
+        <p className="text-center text-red-600">{error}</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-">
           {images.map((img) => (
             <div
               key={img.tempId}
               className="border bg-white p-2 rounded shadow hover:shadow-lg transition flex flex-col justify-between"
               style={{ borderColor: colors.secondary }}
             >
-              <div>
-                <img
-                  src={img.image_url}
-                  alt={img.keyword}
-                  className="w-full h-40 sm:h-48 md:h-48 object-cover rounded-lg"
-                />
+              {/* FIXED IMAGE URL */}
+              <img
+                src={img.image_url || img.low_res_image_url || img.image}
+                className="w-full object-cover rounded-lg"
+                alt={img.title}
+              />
+
+              <div className="mt-2">
                 <p
-                  className="mt-2 font-semibold text-sm sm:text-base truncate"
+                  className="font-semibold text-sm sm:text-base"
                   style={{ color: colors.primary }}
-                  title={img.title}
                 >
-                  {img.title.length > 20 ? img.title.slice(0, 20) + "..." : img.title}
+                  {img.title}
                 </p>
-                {/* <p
-                  className="text-xs sm:text-sm text-gray-600 line-clamp-2"
-                  title={img.description}
-                >
-                  {img.description.length > 50
-                    ? img.description.slice(0, 50) + "..."
-                    : img.description}
-                </p> */}
-                {/* <p
-                  className="italic text-xs truncate"
-                  style={{ color: colors.secondary }}
-                  title={img.keyword}
-                >
-                  {img.keyword.length > 15 ? img.keyword.slice(0, 15) + "..." : img.keyword}
-                </p> */}
+                <p className="text-xs text-gray-600">
+                  {img.type && `Type: ${img.type}`}{" "}
+                  {img.material && `| Material: ${img.material}`}
+                </p>
               </div>
 
-              <button
-                onClick={() => saveToMoodBoard(img)}
-                className="mt-3 px-3 py-1 rounded font-semibold w-full text-sm sm:text-base"
-                style={{ backgroundColor: colors.primary, color: colors.accent }}
-              >
-                Save to MoodBoard
-              </button>
+              <div className="mt-3 flex flex-col gap-2">
+                <a
+                  href={img.website_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded font-semibold text-[1rem] w-full hover:text-red-600 transition-colors underline"
+                >
+                  Visit Website
+                </a>
+
+                <button
+                  onClick={() => saveToMoodBoard(img)}
+                  className="px-3 py-1 rounded font-semibold text-sm sm:text-base w-full"
+                  style={{ backgroundColor: colors.primary, color: colors.accent }}
+                >
+                  Save to MoodBoard
+                </button>
+              </div>
             </div>
           ))}
         </div>
-         <div className="flex flex-col sm:flex-row flex-wrap gap-4 mb-6 mt-10">
-          <select
-            className="border p-2 rounded flex-1  "
-            value={material}
-            onChange={(e) => setMaterial(e.target.value)}
-            style={{ borderColor: colors.secondary }}
-          >
-            <option value="">Select Material</option>
-            <option value="wood">Wood</option>
-            <option value="metal">Metal</option>
-            <option value="glass">Glass</option>
-            <option value="fabric">Fabric</option>
-            <option value="leather">Leather</option>
-          </select>
+      )}
 
-          <select
-            className="border p-2 rounded flex-1"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            style={{ borderColor: colors.secondary }}
-          >
-            <option value="">Select Furniture Type</option>
-            <option value="chair">Chair</option>
-            <option value="table">Table</option>
-            <option value="sofa">Sofa</option>
-            <option value="bed">Bed</option>
-            <option value="shelf">Shelf</option>
-          </select>
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 mt-8">
+        <select
+          className="border p-2 rounded flex-1 bg-white"
+          value={material}
+          onChange={(e) => setMaterial(e.target.value)}
+          style={{ borderColor: colors.secondary }}
+        >
+          <option value="">Select Material</option>
+          <option value="wood">Wood</option>
+          <option value="metal">Metal</option>
+          <option value="glass">Glass</option>
+          <option value="fabric">Fabric</option>
+          <option value="leather">Leather</option>
+        </select>
 
-          <button
-            onClick={handleFilter}
-            className="px-4 py-2 rounded font-semibold w-full sm:w-auto"
-            style={{ backgroundColor: colors.secondary, color: colors.accent }}
-          >
-            {loading ? "Loading..." : "Beau Chaos"}
-          </button>
-        </div>
+        <select
+          className="border p-2 rounded flex-1 bg-white"
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+          style={{ borderColor: colors.secondary }}
+        >
+          <option value="">Select Type</option>
+          <option value="chair">Chair</option>
+          <option value="table">Table</option>
+          <option value="sofa">Sofa</option>
+          <option value="bed">Bed</option>
+          <option value="stool">Stool</option>
+          <option value="shelf">Shelf</option>
+        </select>
 
-        {error && <p className="text-red-600 mb-4">{error}</p>}
-
-
-        {/* Pagination */}
-        {/* <div className="flex md:justify-center items-center  my-12 flex-wrap">
-          <button
-            onClick={handlePrevious}
-            disabled={page === 1}
-            className="px-4 py-2 rounded disabled:opacity-50"
-            style={{ backgroundColor: colors.secondary, color: colors.accent }}
-          >
-            Previous
-          </button>
-          <span className="px-2 py-2 font-semibold">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={handleNext}
-            disabled={page === totalPages || images.length < IMAGES_PER_PAGE}
-            className="px-2 py-2 rounded disabled:opacity-50"
-            style={{ backgroundColor: colors.secondary, color: colors.accent }}
-          >
-            Next
-          </button>
-        </div> */}
-
-        {/* User Activity */}
-        {userId && (
-          <div className="mt-12 p-4 bg-white rounded shadow">
-            <h3 className="text-xl font-bold mb-4" style={{ color: colors.primary }}>
-              Your Recent Activities
-            </h3>
-            {activityLoading ? (
-              <p>Loading activities...</p>
-            ) : activities.length === 0 ? (
-              <p>No recent activity found.</p>
-            ) : (
-              <ul className="list-disc list-inside">
-                {activities.map((act) => (
-                  <li key={act.id}>
-                    <strong>{act.action}</strong>{" "}
-                    {act.details ? `- ${JSON.stringify(act.details)}` : ""}
-                    <span className="text-gray-400 text-xs ml-2">
-                      ({new Date(act.created_at).toLocaleString()})
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        <ToastContainer position="top-right" autoClose={3000} />
+        <button
+          onClick={() => fetchImages({ material, type })}
+          className="px-2 py-2 rounded font-semibold text-sm sm:text-base"
+          style={{ backgroundColor: colors.primary, color: colors.accent }}
+        >
+          Data
+        </button>
       </div>
+
+      {/* Floating Clear MoodBoard Icon */}
+      <button
+        onClick={confirmClearMoodBoard}
+        className="fixed bottom-5 right-5 p-2 rounded-full shadow-lg hover:scale-110 transition"
+        style={{ backgroundColor: "#dc2626", color: colors.accent, zIndex: 50 }}
+        title="Clear MoodBoard"
+      >
+        <FaTrash size={16} />
+      </button>
+
+      <ToastContainer position="top-right" autoClose={3000} />
     </div>
   );
 };
