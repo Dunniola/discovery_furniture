@@ -19,11 +19,11 @@ const Sidebar = ({ activeCategory, onCategorySelect }) => {
   return (
     <>
       {/* --------------------- DESKTOP NAVBAR --------------------- */}
-     <nav className="hidden md:flex w-full px-6 py-4 fixed top-0 left-0 items-center justify-between z-0 uppercase">
+     <nav className="hidden md:flex w-full px-6 py-4 fixed top-0 left-0 items-center justify-between z-100 uppercase">
 
   {/* LEFT: LOGO */}
   <div className="">
-    <img src="/damx.png" alt="Logo" className="w-[3rem] cursor-pointer" />
+    <img src="/labs.png" alt="Logo" className="w-[6rem] cursor-pointer" />
   </div>
 
   {/* RIGHT: CATEGORIES + LOGOUT */}
@@ -64,7 +64,7 @@ const Sidebar = ({ activeCategory, onCategorySelect }) => {
       <div className="md:hidden fixed w-full p-4 flex justify-between items-center font-bold z-50 bg-blue-200">
 
         {/* MOBILE LOGO */}
-        <img src="/damx.png" alt="Logo" className="w-[2.5rem] cursor-pointer" />
+        <img src="/labs.png" alt="Logo" className="w-[6rem] cursor-pointer" />
 
         <div className="flex items-center gap-4">
           {/* NAV TOGGLE */}

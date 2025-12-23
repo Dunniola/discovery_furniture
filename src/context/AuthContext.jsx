@@ -1,39 +1,49 @@
-// src/context/AuthContext.jsx
-import { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
+import CookieService from "encrypted-cookie";
 
 const AuthContext = createContext();
+export default AuthContext;
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(localStorage.getItem("adminToken") || "");
-  const [admin, setAdmin] = useState(
-    JSON.parse(localStorage.getItem("admin")) || null
-  );
+  const secretKey = import.meta.env.VITE_CRYPTO_KEY;
 
-  const login = (tokenValue, adminData) => {
-    setToken(tokenValue);
-    setAdmin(adminData);
-    localStorage.setItem("adminToken", tokenValue);
-    localStorage.setItem("admin", JSON.stringify(adminData));
+  const [user, setUser] = useState(JSON.parse(CookieService.getCookie("user", secretKey) || null));
+  const [token, setToken] = useState(CookieService.getCookie("token", secretKey) || null);
+
+  const handleChange = (userData, userToken) => {
+    setUser(userData);
+    setToken(userToken);
   };
 
   const logout = () => {
-    setToken("");
-    setAdmin(null);
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("admin");
+    CookieService.eraseCookie("user", secretKey);
+  CookieService.eraseCookie("token", secretKey);
+  
+  // Redirect to login page
+  window.location.href = "/login"; 
   };
 
-  const shouldKick = (err) => {
-    if (err?.response?.status === 401) {
+  const shouldKick = (e) => {
+    if (e.response?.data?.message === "Unauthenticated.") {
       logout();
-      window.location.href = "/admin/login";
     }
   };
 
+  useEffect(() => {
+    if (user) CookieService.setCookie("user", JSON.stringify(user), 365, secretKey);
+    if (token) CookieService.setCookie("token", token, 365, secretKey);
+  }, [user, token]);
+
+  const contextData = {
+    user,
+    token,
+    handleChange,
+    logout,
+    shouldKick,
+  };
+
   return (
-    <AuthContext.Provider value={{ token, admin, login, logout, shouldKick }}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={contextData}>{children}</AuthContext.Provider>
   );
 };
 
